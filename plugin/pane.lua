@@ -50,7 +50,7 @@ function pub.restore_pane(_, pane, pane_data)
     -- NOTE: cwd is handled differently on windows. maybe extend functionality for windows later
     -- This could probably be handled better in general
     if not (fs.is_windows) then
-        if pane_data.tty:find("sh") or
+        if pane_data.tty:match("^sh.*") or
             pane_data.tty:find("cmd.exe") or
             pane_data.tty:find("powershell.exe") or
             pane_data.tty:find("pwsh.exe") or
