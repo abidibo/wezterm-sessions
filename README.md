@@ -19,99 +19,148 @@ The [WezTerm](https://wezfurlong.org/wezterm/) Sessions is a Lua script enhancem
   delete, regardless of the current workspace name.
 - **Edit Session State** Allows selecting which saved session to
   edit, the json file is opened in the `$EDITOR` environment variable, or `nvim` if not set.
+- **Enable/Disable Auto Save** Enables/disables auto saving the current session state.
 
 Edit a state can be useful if you find that the foreground processes of the session are not restored correctly.  
 In such cases you can manually set the `tty` string in the state file.
 
 ## Installation
 
-**Add to your wezterm config**
+**Add to your WezTerm config**
 
-   ```lua
-    local sessions = wezterm.plugin.require("https://github.com/abidibo/wezterm-sessions")
-    sessions.apply_to_config(config) -- optional, this adds default keybindings
-   ```
+```lua
+local wezterm = require("wezterm")
+local act = wezterm.action
+local sessions = wezterm.plugin.require(
+  "https://github.com/abidibo/wezterm-sessions"
+)
 
-## Configuration
+local config = {}
 
-1. **Event Bindings:** You can define your own keybindings:
+-- Optional: adds default keybindings and plugin configuration
+sessions.apply_to_config(config, {
+  -- Auto-save interval in seconds (default: 30)
+  auto_save_interval_s = 30,
+})
 
-    ```lua
-    -- there are the default ones
-    config.keys = {
-        {
-            key = 's',
-            mods = 'ALT',
-            action = act({ EmitEvent = "save_session" }),
-        },
-        {
-            key = 'l',
-            mods = 'ALT',
-            action = act({ EmitEvent = "load_session" }),
-        },
-        {
-            key = 'r',
-            mods = 'ALT',
-            action = act({ EmitEvent = "restore_session" }),
-        },
-        {
-            key = 'd',
-            mods = 'CTRL|SHIFT',
-            action = act({ EmitEvent = "delete_session" }),
-        },
-        {
-            key = 'e',
-            mods = 'CTRL|SHIFT',
-            action = act({ EmitEvent = "edit_session" }),
-        },
-    }
-   ```
+return config
+```
 
-2. I also recommend to set up a keybinding for creating **named** workspaces or rename the current one:
+> ℹ️ If `apply_to_config` is not called, **no default keybindings** are added and the plugin uses its internal defaults.
 
-    ````lua 
-    -- Rename current workspace
-    {
-        key = '$',
-        mods = 'CTRL|SHIFT',
-        action = act.PromptInputLine {
-            description = 'Enter new workspace name',
-            action = wezterm.action_callback(
-                function(window, pane, line)
-                    if line then
-                        wezterm.mux.rename_workspace(wezterm.mux.get_active_workspace(), line)
-                    end
-                end
-            ),
-        },
-    },
-    -- Prompt for a name to use for a new workspace and switch to it.
-    {
-        key = 'w',
-        mods = 'CTRL|SHIFT',
-        action = act.PromptInputLine {
-            description = wezterm.format {
-                { Attribute = { Intensity = 'Bold' } },
-                { Foreground = { AnsiColor = 'Fuchsia' } },
-                { Text = 'Enter name for new workspace' },
-            },
-            action = wezterm.action_callback(function(window, pane, line)
-                -- line will be `nil` if they hit escape without entering anything
-                -- An empty string if they just hit enter
-                -- Or the actual line of text they wrote
-                if line then
-                    window:perform_action(
-                        act.SwitchToWorkspace {
-                            name = line,
-                        },
-                        pane
-                    )
-                end
-            end),
-        },
-    },
-    ```
-   
+---
+
+## 🔧 Plugin Configuration Options
+
+| Option                  | Type   | Default | Description                                  |
+| ----------------------- | ------ | ------- | --------------------------------------------- |
+| `auto_save_interval_s` | number | `30` | Interval (s) between automatic session saves |
+
+---
+
+### ⌨️ Keybindings
+
+#### Default keybindings (optional)
+
+Calling `apply_to_config` adds the following keybindings:
+
+```lua
+ALT + s   → Save session
+ALT + l   → Load session
+ALT + r   → Restore session
+CTRL+SHIFT + d → Delete session
+CTRL+SHIFT + e → Edit session
+ALT + a   → Toggle auto-save
+```
+
+---
+
+#### 🔄 Custom keybindings
+
+You may define your own keybindings instead of using the defaults:
+
+```lua
+config.keys = {
+  {
+    key = 's',
+    mods = 'ALT',
+    action = act({ EmitEvent = "save_session" }),
+  },
+  {
+    key = 'l',
+    mods = 'ALT',
+    action = act({ EmitEvent = "load_session" }),
+  },
+  {
+    key = 'r',
+    mods = 'ALT',
+    action = act({ EmitEvent = "restore_session" }),
+  },
+  {
+    key = 'd',
+    mods = 'CTRL|SHIFT',
+    action = act({ EmitEvent = "delete_session" }),
+  },
+  {
+    key = 'e',
+    mods = 'CTRL|SHIFT',
+    action = act({ EmitEvent = "edit_session" }),
+  },
+  {
+    key = 'a',
+    mods = 'ALT',
+    action = act({ EmitEvent = "toggle_autosave" }),
+  },
+}
+```
+
+> 💡 If you define your own keybindings, you **do not need** to call `apply_to_config`.
+
+I also recommend to set up a keybinding for creating **named** workspaces or rename the current one:
+
+```lua
+  -- Rename current workspace
+  {
+      key = '$',
+      mods = 'CTRL|SHIFT',
+      action = act.PromptInputLine {
+          description = 'Enter new workspace name',
+          action = wezterm.action_callback(
+              function(window, pane, line)
+                  if line then
+                      wezterm.mux.rename_workspace(wezterm.mux.get_active_workspace(), line)
+                  end
+              end
+          ),
+      },
+  },
+  -- Prompt for a name to use for a new workspace and switch to it.
+  {
+      key = 'w',
+      mods = 'CTRL|SHIFT',
+      action = act.PromptInputLine {
+          description = wezterm.format {
+              { Attribute = { Intensity = 'Bold' } },
+              { Foreground = { AnsiColor = 'Fuchsia' } },
+              { Text = 'Enter name for new workspace' },
+          },
+          action = wezterm.action_callback(function(window, pane, line)
+              -- line will be `nil` if they hit escape without entering anything
+              -- An empty string if they just hit enter
+              -- Or the actual line of text they wrote
+              if line then
+                  window:perform_action(
+                      act.SwitchToWorkspace {
+                          name = line,
+                      },
+                      pane
+                  )
+              end
+          end),
+      },
+  },
+```
+
 ## Events
 
 The following events are emitted:
@@ -132,14 +181,14 @@ There are currently some limitations and improvements that need to be implemente
 
 - The script is a fork of the original [WezTerm Session Manager](https://github.com/danielcopper/wezterm-session-manager) created by [Daniel Copper](https://github.com/danielcopper),
 which had some limitations I tried to fix, but also it was tested both on linux and windows. On the contrary I'm only interested on linux and so new functionality won't be tested on windows (if windows users are willing to help, they're welcome).
-- The script tries to restore the running processes (only on mac/linux) in each pane, and it does this by inspecting the `proc` `cmdline` file. Probably this can be improved and probably 
+- The script tries to restore the running processes (only on mac/linux) in each pane, and it does this by inspecting the `proc` `cmdline` file. Probably this can be improved and probably
 not all processes can be restored succesfully.
 - The script does not treat remote sessions in a special way at the moment, and for what I read, there are some differences in WezTerm available infos for remote sessions. So maybe this doesn't work well in this scenario. It works well on local and unix domains.
 - The script should be able to restore even complex workspaces layouts, but who knows :)
 
 ## Credits
 
-This project is now developed by [abidibo](https://github.com/abidibo). 
+This project is now developed by [abidibo](https://github.com/abidibo).
 
 It is a fork of the original [WezTerm Session Manager](https://github.com/danielcopper/wezterm-session-manager) created by [Daniel Copper](https://github.com/danielcopper).
 
