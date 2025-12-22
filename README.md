@@ -19,6 +19,7 @@ The [WezTerm](https://wezfurlong.org/wezterm/) Sessions is a Lua script enhancem
   delete, regardless of the current workspace name.
 - **Edit Session State** Allows selecting which saved session to
   edit, the json file is opened in the `$EDITOR` environment variable, or `nvim` if not set.
+- **Fork Session** Creates a new workspace by duplicating the layout of the current one, prompting for a new name. This is useful for experimenting with different layouts without altering the original session.
 - **Enable/Disable Auto Save** Enables/disables auto saving the current session state.
 
 Edit a state can be useful if you find that the foreground processes of the session are not restored correctly.  
@@ -71,6 +72,7 @@ ALT + r   → Restore session
 CTRL+SHIFT + d → Delete session
 CTRL+SHIFT + e → Edit session
 ALT + a   → Toggle auto-save
+ALT + f   → Fork session
 ```
 
 ---
@@ -110,6 +112,11 @@ config.keys = {
     key = 'a',
     mods = 'ALT',
     action = act({ EmitEvent = "toggle_autosave" }),
+  },
+  {
+    key = 'f',
+    mods = 'ALT',
+    action = act({ EmitEvent = "fork_session" }),
   },
 }
 ```
