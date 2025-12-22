@@ -15,8 +15,10 @@ function pub.retrieve_pane_data(pane_info)
 	-- default command line from process name
 	local tty = tostring(pane_info.pane:get_foreground_process_name())
 	-- we try to read process infoo in cmdline proc file to get the full command
-	local pinfo = pane_info.pane:get_foreground_process_info()
-	if pinfo ~= nil then
+	local success, pinfo = pcall(function()
+		return pane_info.pane:get_foreground_process_info()
+	end)
+	if success and pinfo ~= nil then
 		local cmdline_path = "/proc/" .. pinfo.pid .. "/cmdline"
 		local file = io.open(cmdline_path, "r")
 		-- And if we find the file we use this as tty

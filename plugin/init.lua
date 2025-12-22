@@ -1,4 +1,5 @@
 local wezterm = require("wezterm")
+local mux = wezterm.mux
 local act = wezterm.action
 
 ---@class public_module
@@ -177,6 +178,48 @@ function pub.edit_state(window, pane)
 	)
 end
 
+--- Forks the current session into a new one
+function pub.fork_state(window, pane)
+	window:perform_action(
+		act.PromptInputLine({
+			description = "Enter name for the forked workspace:",
+			action = wezterm.action_callback(function(inner_window, _, line)
+				if not line then
+					return
+				end
+				local new_workspace_name = line
+
+				wezterm.log_info("Forking workspace to: " .. new_workspace_name)
+
+				local data = ws_mod.retrieve_workspace_data(inner_window)
+
+				local _, _, w = wezterm.mux.spawn_window({
+					workspace = new_workspace_name,
+				})
+
+				mux.set_active_workspace(new_workspace_name)
+
+				ws_mod.recreate_workspace(w:gui_window(), new_workspace_name, data)
+
+				data.name = new_workspace_name
+				local file_path = save_state_dir
+					.. "wezterm_state_"
+					.. fs_mod.escape_file_name(new_workspace_name)
+					.. ".json"
+				fs_mod.save_to_json_file(data, file_path)
+
+				inner_window:toast_notification(
+					"WezTerm Sessions",
+					"Workspace forked successfully to " .. new_workspace_name,
+					nil,
+					4000
+				)
+			end),
+		}),
+		pane
+	)
+end
+
 -- Autosaving stuff
 
 local auto_save_timer
@@ -253,6 +296,11 @@ function pub.apply_to_config(config, user_config)
 		mods = "ALT",
 		action = act({ EmitEvent = "toggle_autosave" }),
 	})
+	table.insert(config.keys, {
+		key = "f",
+		mods = "ALT",
+		action = act({ EmitEvent = "fork_session" }),
+	})
 end
 
 --- Event handlers
@@ -270,6 +318,9 @@ wezterm.on("delete_session", function(window, pane)
 end)
 wezterm.on("edit_session", function(window, pane)
 	pub.edit_state(window, pane)
+end)
+wezterm.on("fork_session", function(window, pane)
+	pub.fork_state(window, pane)
 end)
 wezterm.on("toggle_autosave", function(window)
 	pub.toggle_autosave(window)

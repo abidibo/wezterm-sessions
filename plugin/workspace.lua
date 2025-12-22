@@ -12,21 +12,25 @@ local is_windows = wezterm.target_triple == "x86_64-pc-windows-msvc"
 -- @param window wezterm.Window: The active window to retrieve the workspace data from.
 -- @return table or nil: The workspace data table or nil if no active window is found.
 function pub.retrieve_workspace_data(window)
-    local workspace_name = window:active_workspace()
-    local workspace_data = {
-        name = workspace_name,
-        windows = {}
-    }
+	local workspace_name = window:active_workspace()
+	local workspace_data = {
+		name = workspace_name,
+		windows = {},
+	}
 
-    -- Iterale over windows
-    for _, mux_win in ipairs(wezterm.mux.all_windows()) do
-        if mux_win:get_workspace() == workspace_name then
-            local win_data = win_mod.retrieve_window_data(mux_win)
-            table.insert(workspace_data.windows, win_data)
-        end
-    end
+	-- Iterale over windows
+	for _, mux_win in ipairs(wezterm.mux.all_windows()) do
+		if mux_win:get_workspace() == workspace_name then
+			if mux_win:gui_window() then -- Check if it has a gui window
+				local win_data = win_mod.retrieve_window_data(mux_win)
+				table.insert(workspace_data.windows, win_data)
+			else
+				wezterm.log_info("Skipping non-gui window with id: " .. tostring(mux_win:window_id()))
+			end
+		end
+	end
 
-    return workspace_data
+	return workspace_data
 end
 
 --- Recreates the workspace based on the provided data.
