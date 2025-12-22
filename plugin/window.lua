@@ -59,6 +59,9 @@ function pub.restore_window(window, win_data)
 		end
 	end
 
+	if active_tab == nil then
+		active_tab = window:active_tab()
+	end
 	active_tab:activate()
 end
 
