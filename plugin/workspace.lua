@@ -15,6 +15,7 @@ function pub.retrieve_workspace_data(window)
 	local workspace_name = window:active_workspace()
 	local workspace_data = {
 		name = workspace_name,
+		last_modified = os.time(),
 		windows = {},
 	}
 
@@ -91,15 +92,51 @@ end
 --- @param dir string
 --- @return table
 function pub.get_workspaces(dir)
-    local choices = {}
-    for d in io.popen("ls -pa " .. dir .. " | grep -v /"):lines() do
-        if string.find(d, "wezterm_state_") then
-            local w = d:gsub("wezterm_state_", "")
-            w = w:gsub(".json", "")
-            table.insert(choices, { id = d, label = fs.unescape_file_name(w) })
-        end
-    end
-    return choices
+	local choices = {}
+	local success, files = pcall(wezterm.read_dir, dir)
+
+	if success then
+		for _, full_path in ipairs(files) do
+			local filename = full_path:match("([^/\\]+)$")
+			if filename and filename:find("wezterm_state_") and filename:find("%.json$") then
+				local data = fs.load_from_json_file(full_path)
+				if data then
+					local label = data.name
+					local num_windows = data.windows and #data.windows or 0
+					local num_tabs = 0
+					if data.windows then
+						for _, w in ipairs(data.windows) do
+							if w.tabs then
+								num_tabs = num_tabs + #w.tabs
+							end
+						end
+					end
+					local time_str = ""
+					if data.last_modified then
+						time_str = os.date("%Y-%m-%d %H:%M", data.last_modified)
+					end
+
+					local rich_label = string.format("%-20s  [W:%d T:%d]  %s", label, num_windows, num_tabs, time_str)
+					table.insert(choices, { id = label, label = rich_label })
+				end
+			end
+		end
+	else
+		-- Fallback to ls for older wezterm versions or if read_dir fails
+		for d in io.popen("ls -pa " .. dir .. " | grep -v /"):lines() do
+			if string.find(d, "wezterm_state_") then
+				local w = d:gsub("wezterm_state_", "")
+				w = w:gsub(".json", "")
+				table.insert(choices, { id = fs.unescape_file_name(w), label = fs.unescape_file_name(w) })
+			end
+		end
+	end
+	
+    table.sort(choices, function(a, b)
+        return a.id < b.id
+    end)
+
+	return choices
 end
 
 return pub

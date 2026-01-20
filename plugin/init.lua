@@ -66,12 +66,12 @@ function pub.load_state(window, pane)
 		act.InputSelector({
 			action = wezterm.action_callback(function(_, inner_pane, id, label)
 				if id and label then
-					wezterm.emit("wezterm-sessions.load.start", label)
-					wezterm.log_info("Switching to ws: " .. label)
+					wezterm.emit("wezterm-sessions.load.start", id)
+					wezterm.log_info("Switching to ws: " .. id)
 					-- switch to workspace
 					window:perform_action(
 						act.SwitchToWorkspace({
-							name = label,
+							name = id,
 						}),
 						inner_pane
 					)
@@ -126,8 +126,8 @@ function pub.delete_state(window, pane)
 		act.InputSelector({
 			action = wezterm.action_callback(function(_, _, id, label)
 				if id and label then
-					wezterm.log_info("Deleting ws: " .. label)
-					local file_path = save_state_dir .. "wezterm_state_" .. fs_mod.escape_file_name(label) .. ".json"
+					wezterm.log_info("Deleting ws: " .. id)
+					local file_path = save_state_dir .. "wezterm_state_" .. fs_mod.escape_file_name(id) .. ".json"
 					wezterm.emit("wezterm-sessions.delete.start", file_path)
 
 					local res = fs_mod.delete_json_file(file_path)
@@ -157,8 +157,8 @@ function pub.edit_state(window, pane)
 		act.InputSelector({
 			action = wezterm.action_callback(function(_, inner_pane, id, label)
 				if id and label then
-					wezterm.log_info("Editing ws: " .. label)
-					local file_path = save_state_dir .. "wezterm_state_" .. fs_mod.escape_file_name(label) .. ".json"
+					wezterm.log_info("Editing ws: " .. id)
+					local file_path = save_state_dir .. "wezterm_state_" .. fs_mod.escape_file_name(id) .. ".json"
 					local editor = os.getenv("EDITOR")
 					if not editor then
 						editor = "nvim"
