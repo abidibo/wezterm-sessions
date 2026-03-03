@@ -69,6 +69,15 @@ function fs.unescape_file_name(file_name)
     return s
 end
 
+--- Decodes percent-encoded characters in a URI path (e.g. %20 -> space)
+--- @param str string
+--- @return string
+local function url_decode(str)
+    return str:gsub("%%(%x%x)", function(hex)
+        return string.char(tonumber(hex, 16))
+    end)
+end
+
 function fs.replace(str, what, with)
     what = string.gsub(what, "[%(%)%.%+%-%*%?%[%]%^%$%%]", "%%%1") -- escape pattern
     with = string.gsub(with, "[%%]", "%%%%") -- escape replacement
@@ -83,21 +92,33 @@ function fs.extract_path_from_dir(working_directory, domain)
     local is_ssh = domain:find("SSHMUX", 1, true)
     local hostname = wezterm.hostname()
 
-    if is_windows then -- TODO: windows
-        -- On Windows, transform 'file:///C:/path/to/dir' to 'C:/path/to/dir'
-        return working_directory:gsub("file:///", "")
+    local path
+    local is_wsl = domain:find("WSL", 1, true)
+
+    if is_windows and is_wsl then
+        -- WSL panes report CWDs as file:///mnt/c/... — strip file:// but keep leading /
+        path = working_directory:gsub("file://[^/]*", "")
+    elseif is_windows then
+        -- Native Windows: transform 'file:///C:/path/to/dir' to 'C:/path/to/dir'
+        path = working_directory:gsub("file:///", "")
     elseif is_linux then
         if not is_ssh then
-            -- local path
-            return fs.replace(working_directory, "file://" .. hostname, "")
+            -- local path: strip file://hostname
+            path = fs.replace(working_directory, "file://" .. hostname, "")
+            -- fallback when hostname is not in the URI
+            if path == working_directory then
+                path = working_directory:gsub("file://[^/]*", "")
+            end
         else
             -- ssh path
             local ssh_host = domain:match("SSHMUX:(.*)")
-            return working_directory:gsub("file://" .. ssh_host, "")
+            path = working_directory:gsub("file://" .. ssh_host, "")
         end
     else -- TODO: macOS
-        return working_directory:gsub("^.*(/Users/)", "/Users/")
+        path = working_directory:gsub("^.*(/Users/)", "/Users/")
     end
+
+    return url_decode(path)
 end
 
 return fs

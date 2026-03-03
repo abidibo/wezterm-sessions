@@ -55,6 +55,7 @@ local shells = {
 	["cmd.exe"] = true,
 	["powershell.exe"] = true,
 	["pwsh.exe"] = true,
+	["wsl.exe"] = true,
 }
 
 --- Resoters a pane from the provided pane data.
