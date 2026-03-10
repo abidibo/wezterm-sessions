@@ -184,6 +184,23 @@ local function build_tab_summary(tab)
 	return result ~= "" and result or (tab.title or "tab")
 end
 
+--- Counts total windows and tabs in workspace data.
+--- @param data table: The workspace data loaded from JSON.
+--- @return number, number
+local function count_windows_tabs(data)
+	local num_windows = 0
+	local num_tabs = 0
+	if data.windows then
+		num_windows = #data.windows
+		for _, w in ipairs(data.windows) do
+			if w.tabs then
+				num_tabs = num_tabs + #w.tabs
+			end
+		end
+	end
+	return num_windows, num_tabs
+end
+
 --- Builds a rich label for a workspace entry in the selection list.
 --- @param data table: The workspace data loaded from JSON.
 --- @return string
@@ -193,10 +210,19 @@ function pub.build_workspace_label(data)
 		time_str = os.date("%Y-%m-%d %H:%M", data.last_modified)
 	end
 
+	local num_windows, num_tabs = count_windows_tabs(data)
+	local counts = string.format(
+		"%d %s, %d %s",
+		num_windows, num_windows == 1 and "window" or "windows",
+		num_tabs, num_tabs == 1 and "tab" or "tabs"
+	)
+
+	local label = data.name
 	if time_str ~= "" then
-		return data.name .. " - " .. time_str
+		label = label .. " - " .. time_str
 	end
-	return data.name
+	label = label .. " (" .. counts .. ")"
+	return label
 end
 
 --- Restores a single tab from a saved session into the current window.
@@ -316,6 +342,42 @@ function pub.get_workspaces_detailed(dir)
 	else
 		-- Fallback: no detail, same as get_workspaces
 		return pub.get_workspaces(dir)
+	end
+
+	return choices
+end
+
+--- Returns the tab-level choices for a specific workspace.
+--- First entry is "Load entire workspace", followed by individual tab rows.
+--- @param dir string
+--- @param workspace_name string
+--- @return table
+function pub.get_workspace_tabs(dir, workspace_name)
+	local choices = {}
+	local file_path = dir .. "wezterm_state_" .. fs.escape_file_name(workspace_name) .. ".json"
+	local data = fs.load_from_json_file(file_path)
+	if not data then
+		return choices
+	end
+
+	-- First option: load the entire workspace
+	table.insert(choices, {
+		id = workspace_name,
+		label = "\u{f0e8} Load entire workspace: " .. workspace_name,
+	})
+
+	-- Individual tab rows
+	if data.windows then
+		for wi, w in ipairs(data.windows) do
+			if w.tabs then
+				for ti, t in ipairs(w.tabs) do
+					local tab_id = workspace_name .. "::tab::" .. wi .. "::" .. ti
+					local summary = build_tab_summary(t)
+					local tab_label = "\u{f2d0} " .. wi .. "  " .. summary
+					table.insert(choices, { id = tab_id, label = tab_label })
+				end
+			end
+		end
 	end
 
 	return choices

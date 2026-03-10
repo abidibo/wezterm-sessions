@@ -120,13 +120,21 @@ local function parse_tab_id(id)
 	return nil, nil, nil
 end
 
---- Allows to select which workspace to load or which tab to restore
-function pub.load_state(window, pane)
-	local choices = ws_mod.get_workspaces_detailed(save_state_dir)
+--- Handles the second step: tab selection within a workspace.
+--- @param window any
+--- @param pane any
+--- @param outer_pane any: The pane from the first selector (used for workspace switch).
+--- @param workspace_name string
+local function show_tab_selector(window, pane, outer_pane, workspace_name)
+	local tab_choices = ws_mod.get_workspace_tabs(save_state_dir, workspace_name)
+	if #tab_choices == 0 then
+		window:toast_notification("WezTerm Sessions", "No data found for: " .. workspace_name, nil, 4000)
+		return
+	end
 
 	window:perform_action(
 		act.InputSelector({
-			action = wezterm.action_callback(function(_, inner_pane, id, label)
+			action = wezterm.action_callback(function(_, _, id, label)
 				if not id or not label then
 					return
 				end
@@ -158,15 +166,39 @@ function pub.load_state(window, pane)
 						act.SwitchToWorkspace({
 							name = id,
 						}),
-						inner_pane
+						outer_pane
 					)
 					wezterm.sleep_ms(2000)
 					window:perform_action(act.EmitEvent("wezter-sessions-switch"), pane)
 				end
 			end),
-			title = "Choose Workspace or Tab",
-			description = "Select a workspace to load all, or a tab to restore it. Enter = accept, Esc = cancel, / = filter",
-			fuzzy_description = "Filter: ",
+			title = "Workspace: " .. workspace_name,
+			description = "Load entire workspace or pick a tab. Enter = accept, Esc = cancel, / = filter",
+			fuzzy_description = "Filter tabs: ",
+			choices = tab_choices,
+			fuzzy = true,
+		}),
+		pane
+	)
+end
+
+--- Allows to select which workspace to load or which tab to restore
+function pub.load_state(window, pane)
+	local choices = ws_mod.get_workspaces(save_state_dir)
+
+	window:perform_action(
+		act.InputSelector({
+			action = wezterm.action_callback(function(_, inner_pane, id, label)
+				if not id or not label then
+					return
+				end
+
+				-- Open the tab selector for the chosen workspace
+				show_tab_selector(window, pane, inner_pane, id)
+			end),
+			title = "Choose Workspace",
+			description = "Select a workspace, then choose to load all or pick a tab. Enter = accept, Esc = cancel, / = filter",
+			fuzzy_description = "Filter workspaces: ",
 			choices = choices,
 			fuzzy = true,
 		}),
