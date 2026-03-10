@@ -99,6 +99,117 @@ function pub.restore_workspace(window, dir, workspace_name)
     return success, mismatches or {}
 end
 
+--- Extracts the short directory name from a cwd URI.
+--- @param cwd string|nil
+--- @return string
+local function short_cwd(cwd)
+	if not cwd or cwd == "" then
+		return ""
+	end
+	-- strip file://hostname prefix, take last path component
+	local path = cwd:gsub("file://[^/]*", "")
+	-- url decode
+	path = path:gsub("%%(%x%x)", function(hex)
+		return string.char(tonumber(hex, 16))
+	end)
+	-- get last component
+	local name = path:match("([^/\\]+)$") or path
+	return name
+end
+
+--- Extracts the short process name from a tty string.
+--- @param tty string|nil
+--- @return string
+local function short_process(tty)
+	if not tty or tty == "" or tty == "nil" then
+		return ""
+	end
+	-- get filename from full path
+	local name = tty:match("([^/\\]+)$") or tty
+	-- remove leading '-' for login shells
+	name = name:gsub("^-", "")
+	-- trim whitespace
+	name = name:match("^%s*(.-)%s*$") or name
+	return name
+end
+
+--- Builds a compact tab summary string like "nvim@myproject[main]"
+--- @param tab table: The tab data.
+--- @return string
+local function build_tab_summary(tab)
+	local num_panes = tab.panes and #tab.panes or 0
+	-- Find the active pane, fallback to first
+	local active_pane = nil
+	if tab.panes then
+		for _, p in ipairs(tab.panes) do
+			if p.is_active then
+				active_pane = p
+				break
+			end
+		end
+		active_pane = active_pane or tab.panes[1]
+	end
+	if not active_pane then
+		return tab.title or "tab"
+	end
+
+	local proc = short_process(active_pane.tty)
+	local cwd = short_cwd(active_pane.cwd)
+	local branch = active_pane.git_branch
+
+	-- Build: "proc@cwd[branch](panes)" — each part optional
+	local result = ""
+	if proc ~= "" then
+		result = proc
+	end
+	if cwd ~= "" then
+		result = result ~= "" and (result .. "@" .. cwd) or cwd
+	end
+	if branch then
+		result = result .. "[" .. branch .. "]"
+	end
+	if num_panes > 1 then
+		result = result .. "(" .. num_panes .. "p)"
+	end
+
+	return result ~= "" and result or (tab.title or "tab")
+end
+
+--- Builds a rich label for a workspace entry in the selection list.
+--- @param data table: The workspace data loaded from JSON.
+--- @return string
+function pub.build_workspace_label(data)
+	local num_windows = data.windows and #data.windows or 0
+	local num_tabs = 0
+	local tab_summaries = {}
+
+	if data.windows then
+		for _, w in ipairs(data.windows) do
+			if w.tabs then
+				num_tabs = num_tabs + #w.tabs
+				for _, t in ipairs(w.tabs) do
+					table.insert(tab_summaries, build_tab_summary(t))
+				end
+			end
+		end
+	end
+
+	local time_str = ""
+	if data.last_modified then
+		time_str = os.date("%Y-%m-%d %H:%M", data.last_modified)
+	end
+
+	local tabs_str = ""
+	if #tab_summaries > 0 then
+		tabs_str = "  " .. table.concat(tab_summaries, " | ")
+	end
+
+	return string.format(
+		"%-20s  [W:%d T:%d]  %s%s",
+		data.name, num_windows, num_tabs, time_str, tabs_str
+	)
+end
+
 --- Returns the list of available workspaces
 --- @param dir string
 --- @return table
@@ -112,44 +223,8 @@ function pub.get_workspaces(dir)
 			if filename and filename:find("wezterm_state_") and filename:find("%.json$") then
 				local data = fs.load_from_json_file(full_path)
 				if data then
-					local label = data.name
-					local num_windows = data.windows and #data.windows or 0
-					local num_tabs = 0
-					-- Collect unique git branches
-					local branches = {}
-					local seen_branches = {}
-					if data.windows then
-						for _, w in ipairs(data.windows) do
-							if w.tabs then
-								num_tabs = num_tabs + #w.tabs
-								for _, t in ipairs(w.tabs) do
-									if t.panes then
-										for _, p in ipairs(t.panes) do
-											if p.git_branch and not seen_branches[p.git_branch] then
-												seen_branches[p.git_branch] = true
-												table.insert(branches, p.git_branch)
-											end
-										end
-									end
-								end
-							end
-						end
-					end
-					local time_str = ""
-					if data.last_modified then
-						time_str = os.date("%Y-%m-%d %H:%M", data.last_modified)
-					end
-
-					local branch_str = ""
-					if #branches > 0 then
-						branch_str = "  " .. table.concat(branches, ", ")
-					end
-
-					local rich_label = string.format(
-						"%-20s  [W:%d T:%d]%s  %s",
-						label, num_windows, num_tabs, branch_str, time_str
-					)
-					table.insert(choices, { id = label, label = rich_label })
+					local rich_label = pub.build_workspace_label(data)
+					table.insert(choices, { id = data.name, label = rich_label })
 				end
 			end
 		end
