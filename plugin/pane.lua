@@ -1,5 +1,6 @@
 local wezterm = require("wezterm")
 local fs = require("fs")
+local git = require("git")
 local pub = {}
 
 --- Retrieve pane data
@@ -30,6 +31,12 @@ function pub.retrieve_pane_data(pane_info)
 		end
 	end
 
+	-- Detect git branch and repo root
+	local cwd_uri = tostring(pane_info.pane:get_current_working_dir())
+	local domain = pane_info.pane:get_domain_name()
+	local git_branch = git.get_branch(cwd_uri, domain)
+	local git_repo = git.get_repo_root(cwd_uri, domain)
+
 	return {
 		pane_id = tostring(pane_info.pane:pane_id()),
 		index = pane_info.index,
@@ -41,8 +48,10 @@ function pub.retrieve_pane_data(pane_info)
 		height = pane_info.height,
 		pixel_width = pane_info.pixel_width,
 		pixel_height = pane_info.pixel_height,
-		cwd = tostring(pane_info.pane:get_current_working_dir()),
+		cwd = cwd_uri,
 		tty = tty,
+		git_branch = git_branch,
+		git_repo = git_repo,
 	}
 end
 
@@ -58,11 +67,14 @@ local shells = {
 	["wsl.exe"] = true,
 }
 
---- Resoters a pane from the provided pane data.
+--- Restores a pane from the provided pane data.
 --- @param _ any: The window to restore the pane in.
 --- @param pane any: The pane to restore.
 --- @param pane_data table: The pane data table.
+--- @return table|nil: Git branch mismatch info if detected, nil otherwise.
 function pub.restore_pane(_, pane, pane_data)
+	local mismatch = nil
+
 	-- Restore TTY for Neovim on Linux
 	-- NOTE: cwd is handled differently on windows. maybe extend functionality for windows later
 	if not fs.is_windows then
@@ -79,6 +91,26 @@ function pub.restore_pane(_, pane, pane_data)
 			pane:send_text(pane_data.tty .. "\n")
 		end
 	end
+
+	-- Check git branch mismatch
+	if pane_data.git_branch then
+		local path = fs.extract_path_from_dir(pane_data.cwd, pane:get_domain_name())
+		local current_branch = git.get_branch_from_path(path)
+		wezterm.log_info(
+			"Git branch check - path: " .. tostring(path)
+			.. ", saved: " .. tostring(pane_data.git_branch)
+			.. ", current: " .. tostring(current_branch)
+		)
+		if current_branch and current_branch ~= pane_data.git_branch then
+			mismatch = {
+				repo = pane_data.git_repo,
+				saved_branch = pane_data.git_branch,
+				current_branch = current_branch,
+			}
+		end
+	end
+
+	return mismatch
 end
 
 return pub

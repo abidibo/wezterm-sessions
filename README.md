@@ -20,6 +20,7 @@ The [WezTerm](https://wezfurlong.org/wezterm/) Sessions is a Lua script enhancem
 - **Edit Session State** Allows selecting which saved session to
   edit, the json file is opened in the `$EDITOR` environment variable, or `nvim` if not set.
 - **Fork Session** Creates a new workspace by duplicating the layout of the current one, prompting for a new name. This is useful for experimenting with different layouts without altering the original session.
+- **Git Branch Awareness** Saves the current git branch for each pane. When restoring a session, warns if the branch has changed since the last save. Branches are also displayed in the session selection list.
 - **Enable/Disable Auto Save** Enables/disables auto saving the current session state.
 
 Edit a state can be useful if you find that the foreground processes of the session are not restored correctly.  
@@ -42,6 +43,8 @@ local config = {}
 sessions.apply_to_config(config, {
   -- Auto-save interval in seconds (default: 30)
   auto_save_interval_s = 30,
+  -- Warn when git branches changed on restore (default: true)
+  git_branch_warn = true,
 })
 
 return config
@@ -53,9 +56,10 @@ return config
 
 ## 🔧 Plugin Configuration Options
 
-| Option                  | Type   | Default | Description                                  |
-| ----------------------- | ------ | ------- | --------------------------------------------- |
-| `auto_save_interval_s` | number | `30` | Interval (s) between automatic session saves |
+| Option                  | Type    | Default | Description                                           |
+| ----------------------- | ------- | ------- | ----------------------------------------------------- |
+| `auto_save_interval_s` | number  | `30`    | Interval (s) between automatic session saves          |
+| `git_branch_warn`      | boolean | `true`  | Show a warning when git branches changed on restore   |
 
 ---
 
@@ -181,6 +185,7 @@ The following events are emitted:
 - `wezterm-sessions.delete.start(file_path)`
 - `wezterm-sessions.delete.end(file_path, res)`
 - `wezterm-sessions.edit.start(file_path, editor)`
+- `wezterm-sessions.git.branch_mismatch(workspace_name, mismatches)` — fired when branches differ on restore. `mismatches` is a list of `{ repo, saved_branch, current_branch }` tables.
 
 ## Limitations
 

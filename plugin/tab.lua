@@ -24,7 +24,9 @@ function pub.retrieve_tab_data(tab)
 end
 
 --- Restore a tab from the provided tab data.
+--- @return any, table: The restored tab and list of git branch mismatches.
 function pub.restore_tab(window, tab_data)
+	local mismatches = {}
 	local ok, result = pcall(function()
 		local initial_pane = window:active_pane()
 		local domain = initial_pane:get_domain_name()
@@ -45,15 +47,15 @@ function pub.restore_tab(window, tab_data)
 		new_tab:activate()
 
 		-- Recreate panes within this tab
-		pub.restore_panes(window, new_tab, tab_data)
+		mismatches = pub.restore_panes(window, new_tab, tab_data)
 
 		return new_tab
 	end)
 	if not ok then
 		wezterm.log_info("Failed to restore tab: " .. tostring(result))
-		return nil
+		return nil, mismatches
 	end
-	return result
+	return result, mismatches
 end
 
 --- Finds the panel data of the nearest horizontal split of the provided pane data
@@ -118,7 +120,7 @@ end
 --- @param ipane table: The pane data to be split
 --- @param panes table: The table of panes that have been restored so far.
 --- @param hpane table: The pane data of the pane that should be created splitting ipane
-local function split_horizontally(window, tab, tab_width, ipanes, ipane, panes, hpane)
+local function split_horizontally(window, tab, tab_width, ipanes, ipane, panes, hpane, mismatches)
 	wezterm.log_info("Split horizontally", ipane.top, ipane.left)
 	wezterm.log_info("Restoring pane", tab_width, ipane.left, hpane.left)
 	local available_width = tab_width - ipane.left
@@ -129,7 +131,10 @@ local function split_horizontally(window, tab, tab_width, ipanes, ipane, panes, 
 	})
 	table.insert(ipanes, hpane)
 	table.insert(panes, new_pane)
-	pane_mod.restore_pane(window, new_pane, hpane)
+	local mismatch = pane_mod.restore_pane(window, new_pane, hpane)
+	if mismatch then
+		table.insert(mismatches, mismatch)
+	end
 end
 
 --- Splits the active pane vertically
@@ -140,7 +145,7 @@ end
 --- @param ipane table: The pane data to be split
 --- @param panes table: The table of panes that have been restored so far.
 --- @param vpane table: The pane data of the pane that should be created splitting ipane
-local function split_vertically(window, tab, tab_height, ipanes, ipane, panes, vpane)
+local function split_vertically(window, tab, tab_height, ipanes, ipane, panes, vpane, mismatches)
 	wezterm.log_info("Split vertically", ipane.top, ipane.left)
 	local available_height = tab_height - ipane.top
 	local new_pane = tab:active_pane():split({
@@ -150,7 +155,10 @@ local function split_vertically(window, tab, tab_height, ipanes, ipane, panes, v
 	})
 	table.insert(ipanes, vpane)
 	table.insert(panes, new_pane)
-	pane_mod.restore_pane(window, new_pane, vpane)
+	local mismatch = pane_mod.restore_pane(window, new_pane, vpane)
+	if mismatch then
+		table.insert(mismatches, mismatch)
+	end
 end
 
 local function activate_panel(p)
@@ -168,11 +176,14 @@ end
 --- We try to understand from splits indexes which split should be performed first
 --- Then we split it horizontally and/or vertically in the found order
 --- The new created panes are stacked on a list and the process continues along the stack
+--- @return table: List of git branch mismatches detected during restore.
 function pub.restore_panes(window, tab, tab_data)
 	-- keeps track of actually created panes data
 	local ipanes = { tab_data.panes[1] }
 	-- keeps track of restored panes
 	local panes = { tab:active_pane() }
+	-- keeps track of git branch mismatches
+	local mismatches = {}
 
 	-- Tab dimensions (in cell unit)
 	local tab_width = get_tab_width(tab_data)
@@ -183,7 +194,10 @@ function pub.restore_panes(window, tab, tab_data)
 		local ok, err = pcall(function()
 			-- restore first pane
 			if idx == 1 then
-				pane_mod.restore_pane(window, p, tab_data.panes[1])
+				local mismatch = pane_mod.restore_pane(window, p, tab_data.panes[1])
+				if mismatch then
+					table.insert(mismatches, mismatch)
+				end
 			end
 
 			activate_panel(p)
@@ -194,17 +208,17 @@ function pub.restore_panes(window, tab, tab_data)
 
 			-- Now we try to understand from splits indexes which split should be performed first
 			if hpane ~= nil and (vj == nil or vj < hj) then -- I though here should be vj < hj but it works this way
-				split_horizontally(window, tab, tab_width, ipanes, ipanes[idx], panes, hpane)
+				split_horizontally(window, tab, tab_width, ipanes, ipanes[idx], panes, hpane, mismatches)
 				activate_panel(p)
 				if vpane ~= nil then
-					split_vertically(window, tab, tab_height, ipanes, ipanes[idx], panes, vpane)
+					split_vertically(window, tab, tab_height, ipanes, ipanes[idx], panes, vpane, mismatches)
 					activate_panel(p)
 				end
 			elseif vpane ~= nil then
-				split_vertically(window, tab, tab_height, ipanes, ipanes[idx], panes, vpane)
+				split_vertically(window, tab, tab_height, ipanes, ipanes[idx], panes, vpane, mismatches)
 				activate_panel(p)
 				if hpane ~= nil then
-					split_horizontally(window, tab, tab_width, ipanes, ipanes[idx], panes, hpane)
+					split_horizontally(window, tab, tab_width, ipanes, ipanes[idx], panes, hpane, mismatches)
 				end
 			end
 		end)
@@ -214,6 +228,7 @@ function pub.restore_panes(window, tab, tab_data)
 	end
 
 	wezterm.log_info("Finished")
+	return mismatches
 end
 
 return pub

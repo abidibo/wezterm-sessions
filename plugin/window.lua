@@ -52,10 +52,17 @@ function pub.restore_window(window, win_data)
 		end
 	end
 
+	local all_mismatches = {}
+
 	for _, tab_data in ipairs(win_data.tabs) do
-		local tab = tab_mod.restore_tab(window, tab_data)
+		local tab, mismatches = tab_mod.restore_tab(window, tab_data)
 		if tab_data.is_active then
 			active_tab = tab
+		end
+		if mismatches then
+			for _, m in ipairs(mismatches) do
+				table.insert(all_mismatches, m)
+			end
 		end
 	end
 
@@ -63,6 +70,8 @@ function pub.restore_window(window, win_data)
 		active_tab = window:active_tab()
 	end
 	active_tab:activate()
+
+	return all_mismatches
 end
 
 return pub

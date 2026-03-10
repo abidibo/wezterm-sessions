@@ -50,12 +50,63 @@ local timer_mod = require("timer")
 --- The directory where we store the workspaces state
 local save_state_dir = plugin_dir .. separator .. get_require_path() .. separator .. "state" .. separator
 
+--- Deduplicates git branch mismatches by repo, keeping unique repo entries.
+--- @param mismatches table
+--- @return table
+local function dedupe_mismatches(mismatches)
+	local seen = {}
+	local result = {}
+	for _, m in ipairs(mismatches) do
+		local key = (m.repo or "") .. ":" .. (m.saved_branch or "") .. ":" .. (m.current_branch or "")
+		if not seen[key] then
+			seen[key] = true
+			table.insert(result, m)
+		end
+	end
+	return result
+end
+
+--- Formats a git branch mismatch notification message.
+--- @param mismatches table
+--- @return string
+local function format_mismatch_message(mismatches)
+	local lines = { "Git branch changed since last save:" }
+	for _, m in ipairs(mismatches) do
+		local repo_name = m.repo and m.repo:match("([^/\\]+)$") or "unknown"
+		table.insert(lines, string.format(
+			"  %s: %s -> %s",
+			repo_name, m.saved_branch, m.current_branch
+		))
+	end
+	return table.concat(lines, "\n")
+end
+
 --- Loads the saved json file matching the current workspace.
 function pub.restore_state(window)
 	local workspace_name = window:active_workspace()
 	wezterm.emit("wezterm-sessions.restore.start", workspace_name)
-	ws_mod.restore_workspace(window, save_state_dir, workspace_name)
+	local success, mismatches = ws_mod.restore_workspace(window, save_state_dir, workspace_name)
 	wezterm.emit("wezterm-sessions.restore.end", workspace_name)
+
+	if not success then
+		return
+	end
+
+	-- Build a single notification combining restore success + git warnings
+	local config = pub.config or DEFAULTS
+	local msg = "Workspace state loaded for: " .. workspace_name .. "."
+	local duration = 4000
+
+	if config.git_branch_warn and mismatches and #mismatches > 0 then
+		local deduped = dedupe_mismatches(mismatches)
+		if #deduped > 0 then
+			msg = msg .. " " .. format_mismatch_message(deduped)
+			duration = 8000
+			wezterm.emit("wezterm-sessions.git.branch_mismatch", workspace_name, deduped)
+		end
+	end
+
+	window:toast_notification("WezTerm Sessions", msg, nil, duration)
 end
 
 --- Allows to select which workspace to load
@@ -253,6 +304,7 @@ end
 
 local DEFAULTS = {
 	auto_save_interval_s = 30,
+	git_branch_warn = true,
 }
 
 ---Sets default keybindings
@@ -264,6 +316,7 @@ function pub.apply_to_config(config, user_config)
 
 	pub.config = {
 		auto_save_interval_s = user_config.auto_save_interval_s or DEFAULTS.auto_save_interval_s,
+		git_branch_warn = user_config.git_branch_warn ~= nil and user_config.git_branch_warn or DEFAULTS.git_branch_warn,
 	}
 
 	table.insert(config.keys, {
