@@ -13,8 +13,11 @@ The [WezTerm](https://wezfurlong.org/wezterm/) Sessions is a Lua script enhancem
   along with their working directories and foreground processes.
 - **Restore Session** Reopens a previously saved session that matches the
   current workspace name, restoring its layout and directories.
-- **Load Session** Allows selecting which saved session to
-  load, regardless of the current workspace name.
+- **Load Session** Opens a detailed session browser showing all saved sessions
+  with their tabs, panes, processes, and git branches. You can either select a
+  **workspace header** to switch to that workspace and restore the full session,
+  or select an **individual tab row** to restore just that tab (with all its panes)
+  into your current window.
 - **Delete Session State** Allows selecting which saved session to
   delete, regardless of the current workspace name.
 - **Edit Session State** Allows selecting which saved session to

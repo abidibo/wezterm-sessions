@@ -133,43 +133,52 @@ local function short_process(tty)
 	return name
 end
 
---- Builds a compact tab summary string like "nvim@myproject[main]"
+--- Builds a summary string for a single pane.
+--- @param pane table: The pane data.
+--- @return string
+local function build_pane_summary(pane)
+	local parts = {}
+	local cwd = short_cwd(pane.cwd)
+	local proc = short_process(pane.tty)
+	if cwd ~= "" then
+		table.insert(parts, "\u{f07c} " .. cwd)
+	end
+	if proc ~= "" then
+		table.insert(parts, "\u{f120} " .. proc)
+	end
+	if pane.git_branch then
+		table.insert(parts, "\u{e0a0} " .. pane.git_branch)
+	end
+	return table.concat(parts, "  ")
+end
+
+--- Builds a compact tab summary showing all panes (active first).
 --- @param tab table: The tab data.
 --- @return string
 local function build_tab_summary(tab)
-	local num_panes = tab.panes and #tab.panes or 0
-	-- Find the active pane, fallback to first
-	local active_pane = nil
-	if tab.panes then
-		for _, p in ipairs(tab.panes) do
-			if p.is_active then
-				active_pane = p
-				break
-			end
-		end
-		active_pane = active_pane or tab.panes[1]
-	end
-	if not active_pane then
+	if not tab.panes or #tab.panes == 0 then
 		return tab.title or "tab"
 	end
 
-	local proc = short_process(active_pane.tty)
-	local cwd = short_cwd(active_pane.cwd)
-	local branch = active_pane.git_branch
+	-- Sort: active pane first, then the rest in order
+	local active = nil
+	local others = {}
+	for _, p in ipairs(tab.panes) do
+		if p.is_active then
+			active = p
+		else
+			table.insert(others, p)
+		end
+	end
+	active = active or tab.panes[1]
 
-	-- Build: "proc@cwd[branch](panes)" — each part optional
-	local result = ""
-	if proc ~= "" then
-		result = proc
-	end
-	if cwd ~= "" then
-		result = result ~= "" and (result .. "@" .. cwd) or cwd
-	end
-	if branch then
-		result = result .. "[" .. branch .. "]"
-	end
-	if num_panes > 1 then
-		result = result .. "(" .. num_panes .. "p)"
+	local result = build_pane_summary(active)
+
+	for _, p in ipairs(others) do
+		local summary = build_pane_summary(p)
+		if summary ~= "" then
+			result = result .. " | " .. summary
+		end
 	end
 
 	return result ~= "" and result or (tab.title or "tab")
@@ -179,38 +188,54 @@ end
 --- @param data table: The workspace data loaded from JSON.
 --- @return string
 function pub.build_workspace_label(data)
-	local num_windows = data.windows and #data.windows or 0
-	local num_tabs = 0
-	local tab_summaries = {}
-
-	if data.windows then
-		for _, w in ipairs(data.windows) do
-			if w.tabs then
-				num_tabs = num_tabs + #w.tabs
-				for _, t in ipairs(w.tabs) do
-					table.insert(tab_summaries, build_tab_summary(t))
-				end
-			end
-		end
-	end
-
 	local time_str = ""
 	if data.last_modified then
 		time_str = os.date("%Y-%m-%d %H:%M", data.last_modified)
 	end
 
-	local tabs_str = ""
-	if #tab_summaries > 0 then
-		tabs_str = "  " .. table.concat(tab_summaries, " | ")
+	if time_str ~= "" then
+		return data.name .. " - " .. time_str
 	end
-
-	return string.format(
-		"%-20s  [W:%d T:%d]  %s%s",
-		data.name, num_windows, num_tabs, time_str, tabs_str
-	)
+	return data.name
 end
 
---- Returns the list of available workspaces
+--- Restores a single tab from a saved session into the current window.
+--- @param window any: The active window.
+--- @param dir string: The state directory.
+--- @param workspace_name string: The workspace name.
+--- @param win_idx number: The window index (1-based).
+--- @param tab_idx number: The tab index (1-based).
+--- @return table: List of git branch mismatches.
+function pub.restore_single_tab(window, dir, workspace_name, win_idx, tab_idx)
+	local tab_mod = require("tab")
+	local file_path = dir .. "wezterm_state_" .. fs.escape_file_name(workspace_name) .. ".json"
+	local workspace_data = fs.load_from_json_file(file_path)
+	if not workspace_data then
+		utils.notify(window, "Session file not found for: " .. workspace_name)
+		return {}
+	end
+
+	local win_data = workspace_data.windows and workspace_data.windows[win_idx]
+	if not win_data then
+		utils.notify(window, "Window not found in session")
+		return {}
+	end
+
+	local tab_data = win_data.tabs and win_data.tabs[tab_idx]
+	if not tab_data then
+		utils.notify(window, "Tab not found in session")
+		return {}
+	end
+
+	local tab, mismatches = tab_mod.restore_tab(window, tab_data)
+	if tab then
+		tab:activate()
+	end
+	return mismatches or {}
+end
+
+--- Returns the list of available workspaces (compact, one row per workspace).
+--- Used by delete and edit flows.
 --- @param dir string
 --- @return table
 function pub.get_workspaces(dir)
@@ -242,6 +267,56 @@ function pub.get_workspaces(dir)
     table.sort(choices, function(a, b)
         return a.id < b.id
     end)
+
+	return choices
+end
+
+--- Returns a detailed list of workspaces with one header row per workspace
+--- and one indented row per tab. Header rows have id = workspace name,
+--- tab rows have id = "workspace_name::tab::win_idx::tab_idx".
+--- @param dir string
+--- @return table
+function pub.get_workspaces_detailed(dir)
+	local choices = {}
+	local success, files = pcall(wezterm.read_dir, dir)
+
+	if success then
+		-- Collect and sort workspace data
+		local workspaces = {}
+		for _, full_path in ipairs(files) do
+			local filename = full_path:match("([^/\\]+)$")
+			if filename and filename:find("wezterm_state_") and filename:find("%.json$") then
+				local data = fs.load_from_json_file(full_path)
+				if data then
+					table.insert(workspaces, data)
+				end
+			end
+		end
+		table.sort(workspaces, function(a, b) return a.name < b.name end)
+
+		for _, data in ipairs(workspaces) do
+			-- Header row
+			local rich_label = pub.build_workspace_label(data)
+			table.insert(choices, { id = data.name, label = rich_label })
+
+			-- Tab detail rows
+			if data.windows then
+				for wi, w in ipairs(data.windows) do
+					if w.tabs then
+						for ti, t in ipairs(w.tabs) do
+							local tab_id = data.name .. "::tab::" .. wi .. "::" .. ti
+							local summary = build_tab_summary(t)
+							local tab_label = "  \u{f2d0} " .. wi .. "  " .. summary
+							table.insert(choices, { id = tab_id, label = tab_label })
+						end
+					end
+				end
+			end
+		end
+	else
+		-- Fallback: no detail, same as get_workspaces
+		return pub.get_workspaces(dir)
+	end
 
 	return choices
 end

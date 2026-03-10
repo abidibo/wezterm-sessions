@@ -109,31 +109,64 @@ function pub.restore_state(window)
 	window:toast_notification("WezTerm Sessions", msg, nil, duration)
 end
 
---- Allows to select which workspace to load
+--- Parses a tab-level selection id.
+--- @param id string
+--- @return string|nil workspace_name, number|nil win_idx, number|nil tab_idx
+local function parse_tab_id(id)
+	local ws, wi, ti = id:match("^(.+)::tab::(%d+)::(%d+)$")
+	if ws then
+		return ws, tonumber(wi), tonumber(ti)
+	end
+	return nil, nil, nil
+end
+
+--- Allows to select which workspace to load or which tab to restore
 function pub.load_state(window, pane)
-	local choices = ws_mod.get_workspaces(save_state_dir)
+	local choices = ws_mod.get_workspaces_detailed(save_state_dir)
 
 	window:perform_action(
 		act.InputSelector({
 			action = wezterm.action_callback(function(_, inner_pane, id, label)
-				if id and label then
+				if not id or not label then
+					return
+				end
+
+				-- Check if user selected a tab-level row
+				local ws_name, win_idx, tab_idx = parse_tab_id(id)
+				if ws_name then
+					-- Restore only this tab into the current window
+					wezterm.log_info("Restoring single tab: " .. id)
+					local mismatches = ws_mod.restore_single_tab(
+						window, save_state_dir, ws_name, win_idx, tab_idx
+					)
+					local config = pub.config or DEFAULTS
+					local msg = "Tab restored from: " .. ws_name .. "."
+					local duration = 4000
+					if config.git_branch_warn and mismatches and #mismatches > 0 then
+						local deduped = dedupe_mismatches(mismatches)
+						if #deduped > 0 then
+							msg = msg .. " " .. format_mismatch_message(deduped)
+							duration = 8000
+						end
+					end
+					window:toast_notification("WezTerm Sessions", msg, nil, duration)
+				else
+					-- Full workspace load
 					wezterm.emit("wezterm-sessions.load.start", id)
 					wezterm.log_info("Switching to ws: " .. id)
-					-- switch to workspace
 					window:perform_action(
 						act.SwitchToWorkspace({
 							name = id,
 						}),
 						inner_pane
 					)
-					-- we need to wait for the switch to complete
 					wezterm.sleep_ms(2000)
 					window:perform_action(act.EmitEvent("wezter-sessions-switch"), pane)
 				end
 			end),
-			title = "Choose Workspace",
-			description = "Select a workspace and press Enter = accept, Esc = cancel, / = filter",
-			fuzzy_description = "Workspace to switch: ",
+			title = "Choose Workspace or Tab",
+			description = "Select a workspace to load all, or a tab to restore it. Enter = accept, Esc = cancel, / = filter",
+			fuzzy_description = "Filter: ",
 			choices = choices,
 			fuzzy = true,
 		}),
