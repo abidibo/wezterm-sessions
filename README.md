@@ -61,8 +61,9 @@ return config
 
 | Option                  | Type    | Default | Description                                           |
 | ----------------------- | ------- | ------- | ----------------------------------------------------- |
-| `auto_save_interval_s` | number  | `30`    | Interval (s) between automatic session saves          |
-| `git_branch_warn`      | boolean | `true`  | Show a warning when git branches changed on restore   |
+| `auto_save_interval_s`  | number  | `30`    | Interval (s) between automatic session saves          |
+| `git_branch_warn`       | boolean | `true`  | Show a warning when git branches changed on restore   |
+| `save_state_dir`        | string  | `nil`   | `nil` = plugin directory, `"default-user-owned"` = `~/.local/share/wezterm-sessions/state/` (`%APPDATA%` on Windows), or a custom absolute path |
 
 ---
 

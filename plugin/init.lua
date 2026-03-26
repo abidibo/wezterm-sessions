@@ -47,8 +47,44 @@ local ws_mod = require("workspace")
 local fs_mod = require("fs")
 local timer_mod = require("timer")
 
---- The directory where we store the workspaces state
+--- The directory where we store the workspaces state.
+--- Default: inside the plugin directory. Can be overridden via apply_to_config.
 local save_state_dir = plugin_dir .. separator .. get_require_path() .. separator .. "state" .. separator
+
+--- Returns a stable, user-owned state directory path.
+--- On macOS/Linux: ~/.local/share/wezterm-sessions/state/
+--- On Windows: %APPDATA%\wezterm-sessions\state\
+local function get_local_state_dir()
+	if is_windows then
+		return (os.getenv("APPDATA") or (wezterm.home_dir .. separator .. "AppData" .. separator .. "Roaming"))
+			.. separator .. "wezterm-sessions" .. separator .. "state" .. separator
+	else
+		return wezterm.home_dir .. separator .. ".local" .. separator .. "share"
+			.. separator .. "wezterm-sessions" .. separator .. "state" .. separator
+	end
+end
+
+--- Whether save_state_dir points to a non-default (user-owned) location that may need creation.
+local custom_state_dir = false
+
+--- Ensures the state directory exists, creating it if necessary.
+--- Only runs when save_state_dir has been overridden from the default plugin directory.
+local state_dir_ready = false
+local function ensure_state_dir()
+	if not custom_state_dir or state_dir_ready then
+		return
+	end
+	local success, _, stderr
+	if is_windows then
+		success, _, stderr = wezterm.run_child_process({ "cmd.exe", "/C", "mkdir", save_state_dir })
+	else
+		success, _, stderr = wezterm.run_child_process({ "mkdir", "-p", save_state_dir })
+	end
+	if not success then
+		wezterm.log_error("Failed to create state directory: " .. (stderr or ""))
+	end
+	state_dir_ready = success
+end
 
 --- Deduplicates git branch mismatches by repo, keeping unique repo entries.
 --- @param mismatches table
@@ -83,6 +119,7 @@ end
 
 --- Loads the saved json file matching the current workspace.
 function pub.restore_state(window)
+	ensure_state_dir()
 	local workspace_name = window:active_workspace()
 	wezterm.emit("wezterm-sessions.restore.start", workspace_name)
 	local success, mismatches = ws_mod.restore_workspace(window, save_state_dir, workspace_name)
@@ -184,6 +221,7 @@ end
 
 --- Allows to select which workspace to load or which tab to restore
 function pub.load_state(window, pane)
+	ensure_state_dir()
 	local choices = ws_mod.get_workspaces(save_state_dir)
 
 	window:perform_action(
@@ -216,6 +254,7 @@ end)
 --- Orchestrator function to save the current workspace state.
 -- Collects workspace data, saves it to a JSON file, and displays a notification.
 function pub.save_state(window, notify)
+	ensure_state_dir()
 	local data = ws_mod.retrieve_workspace_data(window)
 
 	-- Construct the file path based on the workspace name
@@ -236,6 +275,7 @@ end
 
 --- Allows to select which workspace to delete
 function pub.delete_state(window, pane)
+	ensure_state_dir()
 	local choices = ws_mod.get_workspaces(save_state_dir)
 
 	window:perform_action(
@@ -267,6 +307,7 @@ end
 
 --- Allows to select which workspace state to edit in favourite editor
 function pub.edit_state(window, pane)
+	ensure_state_dir()
 	local choices = ws_mod.get_workspaces(save_state_dir)
 
 	window:perform_action(
@@ -296,6 +337,7 @@ end
 
 --- Forks the current session into a new one
 function pub.fork_state(window, pane)
+	ensure_state_dir()
 	window:perform_action(
 		act.PromptInputLine({
 			description = "Enter name for the forked workspace:",
@@ -383,6 +425,24 @@ function pub.apply_to_config(config, user_config)
 		auto_save_interval_s = user_config.auto_save_interval_s or DEFAULTS.auto_save_interval_s,
 		git_branch_warn = user_config.git_branch_warn ~= nil and user_config.git_branch_warn or DEFAULTS.git_branch_warn,
 	}
+
+	-- Override the state directory:
+	--   nil (default) => plugin directory (original behavior)
+	--   "default-user-owned" => ~/.local/share/wezterm-sessions/state/ (or %APPDATA% on Windows)
+	--   string => custom absolute path
+	if user_config.save_state_dir == "default-user-owned" then
+		save_state_dir = get_local_state_dir()
+		custom_state_dir = true
+		state_dir_ready = false
+	elseif type(user_config.save_state_dir) == "string" then
+		local dir = user_config.save_state_dir
+		if dir:sub(-1) ~= separator then
+			dir = dir .. separator
+		end
+		save_state_dir = dir
+		custom_state_dir = true
+		state_dir_ready = false
+	end
 
 	table.insert(config.keys, {
 		key = "s",
