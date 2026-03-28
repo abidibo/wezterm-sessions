@@ -208,6 +208,10 @@ This project is now developed by [abidibo](https://github.com/abidibo).
 
 It is a fork of the original [WezTerm Session Manager](https://github.com/danielcopper/wezterm-session-manager) created by [Daniel Copper](https://github.com/danielcopper).
 
+You can also be interested in other WezTerm related projects:
+
+- [wezterm-cmdpicker](https://github.com/abidibo/wezterm-cmdpicker) - A WezTerm plugin that adds a command-palette-style fuzzy picker for keybindings. Press a trigger key to search and execute any keybinding — user-defined, config, or WezTerm defaults.
+
 ## Contributing
 
 Feedback, bug reports, and contributions to enhance the script are welcome.
