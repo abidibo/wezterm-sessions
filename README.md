@@ -55,6 +55,10 @@ return config
 
 > ℹ️ If `apply_to_config` is not called, **no default keybindings** are added and the plugin uses its internal defaults.
 
+### Type Annotations
+
+You can find LuaLS type annotations for this plugin at [@DrKJeff16](https://github.com/DrKJeff16)'s [wezterm-types](https://github.com/DrKJeff16/wezterm-types).
+
 ---
 
 ## 🔧 Plugin Configuration Options
